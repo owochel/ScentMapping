@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Scent Mapping</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg">
+      <div class="glow glow-a" aria-hidden="true"></div>
+      <div class="glow glow-b" aria-hidden="true"></div>
+      <div class="glow glow-c" aria-hidden="true"></div>
+    </div>
+
+    <main class="shell">
+      <header class="top">
+        <div class="top-left">
+          <div class="kicker">Open — OS</div>
+          <div class="title">Scent Mapping</div>
+          <div class="subtitle">Map scents to color + words. Saved locally. Export anytime.</div>
+        </div>
+        <!-- <nav class="top-right" aria-label="Sections">
+          <div class="nav-col">
+            <div class="nav-item"><span class="nav-label">Input</span><span class="nav-num">01</span></div>
+            <div class="nav-item"><span class="nav-label">Library</span><span class="nav-num">02</span></div>
+            <div class="nav-item"><span class="nav-label">Export</span><span class="nav-num">03</span></div>
+          </div>
+        </nav> -->
+      </header>
+
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">Input</div>
+          <div class="card-note">Create a mapping for one scent.</div>
+        </div>
+
+        <form id="mappingForm" class="form" autocomplete="off" novalidate>
+          <div class="grid">
+            <label class="field">
+              <span class="label">Scent</span>
+              <input
+                id="scentInput"
+                name="scent"
+                type="text"
+                placeholder="e.g., petrichor, cedar, rain"
+                maxlength="80"
+                required
+              />
+              <span class="hint">Short name for the scent.</span>
+            </label>
+
+            <div class="field">
+              <div class="label-row">
+                <span class="label">Color</span>
+                <output id="hexOut" class="mono" for="colorInput">#7A6CFF</output>
+              </div>
+              <div class="color-row">
+                <div id="colorPreview" class="swatch" aria-hidden="true"></div>
+                <input id="colorInput" name="color" type="color" value="#7A6CFF" />
+                <input
+                  id="colorText"
+                  class="mono"
+                  name="colorText"
+                  type="text"
+                  inputmode="text"
+                  spellcheck="false"
+                  aria-label="Color hex value"
+                  value="#7A6CFF"
+                />
+              </div>
+              <span class="hint">Pick a color or type a hex like <span class="mono">#FFAA00</span>.</span>
+            </div>
+
+            <label class="field field-wide">
+              <span class="label">Description</span>
+              <textarea
+                id="descInput"
+                name="description"
+                placeholder="Describe the scent in words (texture, mood, memories, places, human traits, etc)…"
+                maxlength="600"
+                rows="4"
+              ></textarea>
+              <div class="meta-row">
+                <span class="hint">Think about how this scent compare to other things in your life.</span>
+                <span class="counter mono"><span id="descCount">0</span>/600</span>
+              </div>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="saveBtn" type="submit" class="btn primary">Save mapping</button>
+            <button id="cancelEditBtn" type="button" class="btn ghost" hidden>Cancel edit</button>
+            <div class="actions-right">
+              <button id="clearAllBtn" type="button" class="btn danger">Clear all</button>
+            </div>
+          </div>
+          <p id="formStatus" class="status" role="status" aria-live="polite"></p>
+        </form>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">Library</div>
+          <div class="card-note">
+            <span id="countOut" class="mono">0</span> saved
+          </div>
+        </div>
+
+        <div class="library-tools">
+          <label class="field small">
+            <span class="label">Search</span>
+            <input id="searchInput" type="search" placeholder="Filter by scent or words…" />
+          </label>
+          <label class="field small">
+            <span class="label">Sort</span>
+            <select id="sortSelect">
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="scent-az">Scent A→Z</option>
+              <option value="scent-za">Scent Z→A</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="emptyState" class="empty" hidden>
+          <div class="empty-title">No mappings yet.</div>
+          <div class="empty-sub">Add your first scent above.</div>
+        </div>
+        <ul id="list" class="list" aria-label="Saved scent mappings"></ul>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">Export</div>
+          <div class="card-note">Download your data as JSON or CSV.</div>
+        </div>
+        <div class="export-row">
+          <button id="downloadJsonBtn" type="button" class="btn">Download JSON</button>
+          <button id="downloadCsvBtn" type="button" class="btn">Download CSV</button>
+          <div class="export-note mono" id="exportNote"></div>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <div class="foot-left">Stored in your browser (local only).</div>
+        <div class="foot-right mono" id="versionOut">v1</div>
+      </footer>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
