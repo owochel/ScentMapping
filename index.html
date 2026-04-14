@@ -60,23 +60,43 @@
             <div class="field">
               <div class="label-row">
                 <span class="label">Color</span>
-                <output id="hexOut" class="mono" for="colorInput">#7A6CFF</output>
+                <output id="hexOut" class="mono" for="colorText">#7A6CFF</output>
               </div>
-              <div class="color-row">
-                <div id="colorPreview" class="swatch" aria-hidden="true"></div>
-                <input id="colorInput" name="color" type="color" value="#7A6CFF" />
-                <input
-                  id="colorText"
-                  class="mono"
-                  name="colorText"
-                  type="text"
-                  inputmode="text"
-                  spellcheck="false"
-                  aria-label="Color hex value"
-                  value="#7A6CFF"
-                />
+              <input id="colorInput" name="color" type="hidden" value="#7A6CFF" />
+
+              <div class="picker">
+                <div class="picker-main">
+                  <div class="picker-sv" aria-label="Saturation and brightness picker">
+                    <canvas id="svCanvas" width="280" height="220"></canvas>
+                    <div id="svCursor" class="picker-cursor" aria-hidden="true"></div>
+                  </div>
+                  <div class="picker-hue" aria-label="Hue picker">
+                    <canvas id="hueCanvas" width="22" height="220"></canvas>
+                    <div id="hueCursor" class="hue-cursor" aria-hidden="true"></div>
+                  </div>
+                </div>
+
+                <div class="picker-bottom">
+                  <div class="picker-preview">
+                    <div id="colorPreview" class="swatch big" aria-hidden="true"></div>
+                  </div>
+                  <label class="field mini">
+                    <span class="label">Hex</span>
+                    <input
+                      id="colorText"
+                      class="mono"
+                      name="colorText"
+                      type="text"
+                      inputmode="text"
+                      spellcheck="false"
+                      aria-label="Color hex value"
+                      value="#7A6CFF"
+                    />
+                  </label>
+                </div>
               </div>
-              <span class="hint">Pick a color or type a hex like <span class="mono">#FFAA00</span>.</span>
+
+              <span class="hint">Drag in the square, then adjust hue on the slider.</span>
             </div>
 
             <label class="field field-wide">

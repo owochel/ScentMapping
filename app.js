@@ -6,10 +6,14 @@ const $ = (sel) => /** @type {HTMLElement} */ (document.querySelector(sel));
 
 const form = /** @type {HTMLFormElement} */ ($("#mappingForm"));
 const scentInput = /** @type {HTMLInputElement} */ ($("#scentInput"));
-const colorInput = /** @type {HTMLInputElement} */ ($("#colorInput"));
+const colorInput = /** @type {HTMLInputElement} */ ($("#colorInput")); // hidden canonical hex
 const colorText = /** @type {HTMLInputElement} */ ($("#colorText"));
 const colorPreview = $("#colorPreview");
 const hexOut = /** @type {HTMLOutputElement} */ ($("#hexOut"));
+const svCanvas = /** @type {HTMLCanvasElement} */ ($("#svCanvas"));
+const hueCanvas = /** @type {HTMLCanvasElement} */ ($("#hueCanvas"));
+const svCursor = $("#svCursor");
+const hueCursor = $("#hueCursor");
 const descInput = /** @type {HTMLTextAreaElement} */ ($("#descInput"));
 const descCount = $("#descCount");
 const list = $("#list");
@@ -30,6 +34,11 @@ let entries = [];
 /** @type {string|null} */
 let editingId = null;
 
+/** @type {{h:number,s:number,v:number}} */
+let hsv = { h: 260, s: 0.58, v: 1 };
+let isDraggingSv = false;
+let isDraggingHue = false;
+
 function uid() {
   return crypto.randomUUID?.() ?? `id_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
@@ -39,6 +48,58 @@ function normalizeHex(value) {
   const m = v.match(/^#([0-9a-fA-F]{6})$/);
   if (m) return `#${m[1].toUpperCase()}`;
   return null;
+}
+
+function clamp01(x) {
+  return Math.min(1, Math.max(0, x));
+}
+
+function hsvToRgb({ h, s, v }) {
+  const hh = ((h % 360) + 360) % 360;
+  const c = v * s;
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+  const m = v - c;
+  let r1 = 0, g1 = 0, b1 = 0;
+  if (hh < 60) [r1, g1, b1] = [c, x, 0];
+  else if (hh < 120) [r1, g1, b1] = [x, c, 0];
+  else if (hh < 180) [r1, g1, b1] = [0, c, x];
+  else if (hh < 240) [r1, g1, b1] = [0, x, c];
+  else if (hh < 300) [r1, g1, b1] = [x, 0, c];
+  else [r1, g1, b1] = [c, 0, x];
+  return {
+    r: Math.round((r1 + m) * 255),
+    g: Math.round((g1 + m) * 255),
+    b: Math.round((b1 + m) * 255),
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  const to2 = (n) => n.toString(16).padStart(2, "0").toUpperCase();
+  return `#${to2(r)}${to2(g)}${to2(b)}`;
+}
+
+function hexToRgb(hex) {
+  const h = normalizeHex(hex);
+  if (!h) return null;
+  const n = parseInt(h.slice(1), 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function rgbToHsv({ r, g, b }) {
+  const rr = r / 255, gg = g / 255, bb = b / 255;
+  const max = Math.max(rr, gg, bb);
+  const min = Math.min(rr, gg, bb);
+  const d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === rr) h = 60 * (((gg - bb) / d) % 6);
+    else if (max === gg) h = 60 * ((bb - rr) / d + 2);
+    else h = 60 * ((rr - gg) / d + 4);
+  }
+  if (h < 0) h += 360;
+  const s = max === 0 ? 0 : d / max;
+  const v = max;
+  return { h, s, v };
 }
 
 function setStatus(msg, tone = "neutral") {
@@ -96,6 +157,93 @@ function applyColor(hex) {
   colorPreview.style.background = `radial-gradient(circle at 45% 40%, rgba(255,255,255,.22), transparent 56%),
     radial-gradient(circle at 55% 60%, rgba(0,0,0,.35), transparent 60%),
     ${h}`;
+
+  const rgb = hexToRgb(h);
+  if (rgb) {
+    hsv = rgbToHsv(rgb);
+    redrawPicker();
+  }
+}
+
+function redrawHue() {
+  const ctx = hueCanvas.getContext("2d");
+  if (!ctx) return;
+  const w = hueCanvas.width;
+  const h = hueCanvas.height;
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  for (let i = 0; i <= 360; i += 60) {
+    const c = rgbToHex(hsvToRgb({ h: i, s: 1, v: 1 }));
+    g.addColorStop(i / 360, c);
+  }
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+}
+
+function redrawSv() {
+  const ctx = svCanvas.getContext("2d");
+  if (!ctx) return;
+  const w = svCanvas.width;
+  const h = svCanvas.height;
+  ctx.clearRect(0, 0, w, h);
+
+  // base hue
+  ctx.fillStyle = rgbToHex(hsvToRgb({ h: hsv.h, s: 1, v: 1 }));
+  ctx.fillRect(0, 0, w, h);
+
+  // saturation overlay (white -> transparent)
+  const sat = ctx.createLinearGradient(0, 0, w, 0);
+  sat.addColorStop(0, "rgba(255,255,255,1)");
+  sat.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = sat;
+  ctx.fillRect(0, 0, w, h);
+
+  // value overlay (transparent -> black)
+  const val = ctx.createLinearGradient(0, 0, 0, h);
+  val.addColorStop(0, "rgba(0,0,0,0)");
+  val.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.fillStyle = val;
+  ctx.fillRect(0, 0, w, h);
+}
+
+function positionCursors() {
+  const svRect = svCanvas.getBoundingClientRect();
+  const hueRect = hueCanvas.getBoundingClientRect();
+
+  const x = hsv.s * svRect.width;
+  const y = (1 - hsv.v) * svRect.height;
+  svCursor.style.left = `${x}px`;
+  svCursor.style.top = `${y}px`;
+
+  const hy = (hsv.h / 360) * hueRect.height;
+  hueCursor.style.top = `${hy}px`;
+}
+
+function redrawPicker() {
+  redrawHue();
+  redrawSv();
+  positionCursors();
+}
+
+function setFromHsv(next) {
+  hsv = { h: ((next.h % 360) + 360) % 360, s: clamp01(next.s), v: clamp01(next.v) };
+  const hex = rgbToHex(hsvToRgb(hsv));
+  // keep canonical
+  colorInput.value = hex;
+  colorText.value = hex;
+  hexOut.value = hex;
+  hexOut.textContent = hex;
+  colorPreview.style.background = `radial-gradient(circle at 45% 40%, rgba(255,255,255,.22), transparent 56%),
+    radial-gradient(circle at 55% 60%, rgba(0,0,0,.35), transparent 60%),
+    ${hex}`;
+  redrawPicker();
+}
+
+function getPointerPos(e, el) {
+  const r = el.getBoundingClientRect();
+  const x = "touches" in e ? e.touches[0]?.clientX ?? 0 : e.clientX;
+  const y = "touches" in e ? e.touches[0]?.clientY ?? 0 : e.clientY;
+  return { x: x - r.left, y: y - r.top, w: r.width, h: r.height };
 }
 
 function setEditing(entry) {
@@ -260,7 +408,6 @@ applyColor(colorInput.value);
 entries = load();
 render();
 
-colorInput.addEventListener("input", () => applyColor(colorInput.value));
 colorText.addEventListener("input", () => {
   const h = normalizeHex(colorText.value);
   if (h) applyColor(h);
@@ -268,6 +415,46 @@ colorText.addEventListener("input", () => {
 colorText.addEventListener("blur", () => {
   applyColor(colorText.value);
 });
+
+// picker interactions (SV square)
+svCanvas.addEventListener("pointerdown", (e) => {
+  isDraggingSv = true;
+  svCanvas.setPointerCapture(e.pointerId);
+  const p = getPointerPos(e, svCanvas);
+  setFromHsv({ h: hsv.h, s: clamp01(p.x / p.w), v: clamp01(1 - p.y / p.h) });
+});
+svCanvas.addEventListener("pointermove", (e) => {
+  if (!isDraggingSv) return;
+  const p = getPointerPos(e, svCanvas);
+  setFromHsv({ h: hsv.h, s: clamp01(p.x / p.w), v: clamp01(1 - p.y / p.h) });
+});
+svCanvas.addEventListener("pointerup", () => {
+  isDraggingSv = false;
+});
+svCanvas.addEventListener("pointercancel", () => {
+  isDraggingSv = false;
+});
+
+// hue slider
+hueCanvas.addEventListener("pointerdown", (e) => {
+  isDraggingHue = true;
+  hueCanvas.setPointerCapture(e.pointerId);
+  const p = getPointerPos(e, hueCanvas);
+  setFromHsv({ h: clamp01(p.y / p.h) * 360, s: hsv.s, v: hsv.v });
+});
+hueCanvas.addEventListener("pointermove", (e) => {
+  if (!isDraggingHue) return;
+  const p = getPointerPos(e, hueCanvas);
+  setFromHsv({ h: clamp01(p.y / p.h) * 360, s: hsv.s, v: hsv.v });
+});
+hueCanvas.addEventListener("pointerup", () => {
+  isDraggingHue = false;
+});
+hueCanvas.addEventListener("pointercancel", () => {
+  isDraggingHue = false;
+});
+
+window.addEventListener("resize", () => positionCursors());
 
 descInput.addEventListener("input", () => {
   descCount.textContent = String(descInput.value.length);
@@ -297,7 +484,7 @@ clearAllBtn.addEventListener("click", () => {
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const scent = String(scentInput.value ?? "").trim();
-  const color = normalizeHex(colorText.value) ?? normalizeHex(colorInput.value) ?? "#7A6CFF";
+  const color = normalizeHex(colorInput.value) ?? normalizeHex(colorText.value) ?? "#7A6CFF";
   const description = String(descInput.value ?? "");
 
   if (!scent) {
