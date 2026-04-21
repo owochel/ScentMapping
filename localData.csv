@@ -1,0 +1,31 @@
+id,scent,color,description,createdAt,updatedAt
+a66210db-5da5-4dff-b3ba-099a0a34eecc,Grass,#A8BE53,"the earthy scent of grass, with hints of moisture and fresh mud",2026-04-16T13:43:35.326Z,
+917174a7-2c10-4037-9966-136b092b6cbd,Rain on Concrete,#7A8FA3,"Smells like the sidewalk cooling down after a long, bright day—wet dust, stone, and a tiny metallic spark.",2026-04-18T13:27:08.000Z,
+b1774b09-bc50-4c45-919b-231af667487c,Old Books,#8B6F47,"Dry paper, glue, and a faded attic warmth. It reminds me of borrowing novels from a school library no one renovated.",2026-04-18T16:53:20.000Z,2026-04-19T03:24:03.000Z
+3738c151-df1d-4cab-9af1-4eeb452d1131,Laundry Detergent,#CFE8FF,"Crisp, soapy, almost icy. The kind of clean that feels folded, stacked, and slightly too perfect.",2026-04-18T19:36:14.000Z,
+1197bdfa-1e9f-413a-8808-3c41a5ab3517,Coffee Shop,#6B4A2F,"Roasted beans, warm milk foam, sugar in the air—basically the smell of people trying to start their day over.",2026-04-18T22:17:54.000Z,
+e29c0f2f-2fbb-4836-b97c-225c26c36e79,Orange Peel,#F29B38,"Bright and fizzy, like someone snapped sunlight open with their thumb.",2026-04-19T02:00:37.000Z,2026-04-19T10:23:07.000Z
+5b0034ac-7317-4966-aa1a-47fd8407b477,Sunscreen,#F6D36B,"Coconut, plastic, hot skin. It smells like beach towels, white glare, and forgetting what time it is.",2026-04-19T04:33:11.000Z,
+6984ee52-38b0-4bc3-85e0-6b00bbd95062,Gasoline,#5C6670,"Harsh and oily, but weirdly magnetic. If this smell had a color, it would definitely be blue-gray.",2026-04-19T09:12:29.000Z,
+f61d640f-695c-4b2f-a86a-95e12724f793,Vanilla Candle,#EAD7B7,"Sweet in a soft, staged way—like a room trying very hard to say relax.",2026-04-19T11:56:04.000Z,2026-04-19T15:30:59.000Z
+211e2b0e-4b0b-4ba8-b999-e54fd414152d,Hospital Corridor,#DDE6EA,"Sanitizer, plastic curtains, clean air with no softness in it. A smell that makes you stand a little straighter.",2026-04-19T14:41:45.000Z,
+692e8e9a-0e89-4d91-8bf2-8e446a0cd649,Bakery Bread,#C98A52,Warm yeast and toasted crust. It feels less like a smell and more like being welcomed inside.,2026-04-19T17:27:31.000Z,
+c08ff5c1-86d1-4710-b7c3-2dfe4e12c790,Pine Forest,#355E3B,"Cold green resin, damp bark, and deep air. Not pretty-cute green—serious green.",2026-04-19T21:18:17.000Z,2026-04-20T10:36:06.000Z
+1c20931b-4108-499f-bd25-f4b1f6cf9569,Chlorine Pool,#59B6D9,Sharp blue cleanliness with echoes of wet concrete and summer lessons.,2026-04-20T01:02:41.000Z,
+b974d257-26b4-4509-a092-a8187a616714,New Car,#3F4652,"Leather, glue, and sealed-off plastic. It smells expensive, artificial, and a little bit nervous.",2026-04-20T04:20:23.000Z,
+854e6e49-101b-4e44-9672-336ff8fbfdf3,Jasmine Tea,#D8E2B8,Soft floral steam with a clean bitter edge. The scent arrives quietly and stays elegant.,2026-04-20T07:49:12.000Z,2026-04-20T14:17:40.000Z
+c30c82bc-9322-476f-96ed-e0d208cbdc7c,Smoke from Campfire,#7B5A46,"Burnt wood, dry air, and that clingy sweetness that follows you home in your jacket.",2026-04-20T10:33:50.000Z,
+ed08927e-14e0-4c0b-805e-73b0ba44809e,Bubble Gum,#F49AC2,"Loudly pink. Sugary, fake, cheerful—like a flavor designed by a cartoon.",2026-04-20T14:06:28.000Z,
+ea7d2e08-7bc8-4625-9a5e-8c1fe2af4d22,Ocean Air,#89C2D9,"Salty wind, cool minerals, and distance. It smells open, even before you see the water.",2026-04-20T17:42:13.000Z,2026-04-21T09:26:55.000Z
+04e11676-d4e1-4277-ab04-1e00d5aba4dd,Melted Crayon,#D95F5F,Waxy and warm with a tiny sweetness. Instantly puts me back at a child-sized desk with colored hands.,2026-04-20T20:54:02.000Z,
+a3f8fc8c-caba-4772-8470-caecc117f8e2,Rose Perfume,#C97C8C,"Powder, petals, velvet. A little dramatic, a little dressed up, definitely not trying to be subtle.",2026-04-20T23:23:44.000Z,
+dfa4296a-8c26-4d30-bef6-a44808762179,Fresh Cut Cucumber,#9BCB7E,"Watery green and crisp, like the smell of cold light on a kitchen counter.",2026-04-21T03:10:16.000Z,2026-04-21T12:21:08.000Z
+bc224032-0bdb-47bc-8729-91d7497a65ef,Subway Station,#6C6A67,"Metal dust, damp air, brakes, electricity. Not exactly pleasant, but unmistakably alive.",2026-04-21T06:29:36.000Z,
+c1067ebb-f7db-48bc-b0bd-62aa1a730d74,Burnt Toast,#8A5A3C,"Bitter, scorched, and domestic. Smells like someone got distracted for two minutes too long.",2026-04-21T09:46:27.000Z,
+aee24da0-086c-40a2-a7ed-2ca0cfe6c994,Baby Powder,#F2E6EE,"Very soft, very packaged, almost cloud-like—comforting if you like gentle smells, cloying if you don’t.",2026-04-21T12:37:19.000Z,2026-04-21T20:03:21.000Z
+ef191d6f-40d7-4961-bcb7-b5cbd9faa453,Rubber Eraser,#F4C27A,"Clean rubber with a faint sweetness. Feels like exam season, pencil shavings, and zipped-up stationery.",2026-04-21T15:55:04.000Z,
+b86595d9-4ea5-45d5-a5d2-5413a4c77a35,Lavender Soap,#B9A7D9,"A neat, floral clean—more bathroom shelf than wild lavender field, but still calming.",2026-04-21T19:24:53.000Z,
+77da9f2e-ac29-445c-9d56-f8a7a54eb0dc,Mango Candy,#F4A259,"Sticky, bright, and louder than real fruit. It tastes yellow even before you eat it.",2026-04-21T22:32:48.000Z,2026-04-22T10:19:14.000Z
+d8fb5df1-2f59-4e9d-afa2-1c41ae70cff3,Cedar Closet,#8C6B4F,"Dry wood, old fabric, and a hidden kind of warmth. Like winter coats waiting for their season.",2026-04-22T02:13:33.000Z,
+41d60249-7eaf-4056-bb03-f7a59e0a17d1,Nail Salon,#CFC7D9,"Acetone, polish, and glossy chemicals in bright air. A strangely glamorous headache.",2026-04-22T05:04:06.000Z,
+8a80ed8d-56aa-4839-97b2-25928d2f6392,Tomato Vine,#5E8F4D,"Green, bitter, and slightly fuzzy around the edges—the smell left on your fingers after touching a living stem.",2026-04-22T08:26:58.000Z,2026-04-22T13:50:09.000Z

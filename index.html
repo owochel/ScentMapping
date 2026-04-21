@@ -155,6 +155,42 @@
           <div class="empty-sub">Add your first scent above.</div>
         </div>
         <ul id="list" class="list" aria-label="Saved scent mappings"></ul>
+
+        <div id="pager" class="pager" hidden aria-label="Library pagination">
+          <button id="prevPageBtn" type="button" class="btn ghost">Prev</button>
+          <div class="pager-mid">
+            <span class="pager-label">Page</span>
+            <span id="pageOut" class="mono">1</span>
+            <span class="pager-label">of</span>
+            <span id="pageTotalOut" class="mono">1</span>
+          </div>
+          <button id="nextPageBtn" type="button" class="btn ghost">Next</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div class="card-title">Visualization</div>
+          <div class="card-note">Each scent shows up to 5 most common colors.</div>
+        </div>
+        <div class="viz-wrap">
+          <div id="vizEmpty" class="empty" hidden>
+            <div class="empty-title">Nothing to visualize yet.</div>
+            <div class="empty-sub">Save a few mappings to see the color library.</div>
+          </div>
+          <div id="vizGrid" class="viz-grid" aria-label="Scent color visualization"></div>
+
+          <div id="vizPager" class="pager" hidden aria-label="Visualization pagination">
+            <button id="vizPrevBtn" type="button" class="btn ghost">Prev</button>
+            <div class="pager-mid">
+              <span class="pager-label">Page</span>
+              <span id="vizPageOut" class="mono">1</span>
+              <span class="pager-label">of</span>
+              <span id="vizPageTotalOut" class="mono">1</span>
+            </div>
+            <button id="vizNextBtn" type="button" class="btn ghost">Next</button>
+          </div>
+        </div>
       </section>
 
       <section class="card">

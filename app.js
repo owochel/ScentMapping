@@ -28,11 +28,27 @@ const downloadCsvBtn = /** @type {HTMLButtonElement} */ ($("#downloadCsvBtn"));
 const exportNote = $("#exportNote");
 const searchInput = /** @type {HTMLInputElement} */ ($("#searchInput"));
 const sortSelect = /** @type {HTMLSelectElement} */ ($("#sortSelect"));
+const vizGrid = $("#vizGrid");
+const vizEmpty = $("#vizEmpty");
+const vizPager = $("#vizPager");
+const vizPrevBtn = /** @type {HTMLButtonElement} */ ($("#vizPrevBtn"));
+const vizNextBtn = /** @type {HTMLButtonElement} */ ($("#vizNextBtn"));
+const vizPageOut = $("#vizPageOut");
+const vizPageTotalOut = $("#vizPageTotalOut");
+const pager = $("#pager");
+const prevPageBtn = /** @type {HTMLButtonElement} */ ($("#prevPageBtn"));
+const nextPageBtn = /** @type {HTMLButtonElement} */ ($("#nextPageBtn"));
+const pageOut = $("#pageOut");
+const pageTotalOut = $("#pageTotalOut");
 
 /** @type {Entry[]} */
 let entries = [];
 /** @type {string|null} */
 let editingId = null;
+let page = 1;
+const PAGE_SIZE = 5;
+let vizPage = 1;
+const VIZ_PAGE_SIZE = 9;
 
 /** @type {{h:number,s:number,v:number}} */
 let hsv = { h: 260, s: 0.58, v: 1 };
@@ -132,6 +148,102 @@ function load() {
 
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries, null, 2));
+}
+
+function parseCsv(text) {
+  /** @type {string[][]} */
+  const rows = [];
+  let row = [];
+  let field = "";
+  let i = 0;
+  let inQuotes = false;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        const next = text[i + 1];
+        if (next === '"') {
+          field += '"';
+          i += 2;
+          continue;
+        }
+        inQuotes = false;
+        i += 1;
+        continue;
+      }
+      field += c;
+      i += 1;
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      i += 1;
+      continue;
+    }
+    if (c === ",") {
+      row.push(field);
+      field = "";
+      i += 1;
+      continue;
+    }
+    if (c === "\n") {
+      row.push(field);
+      field = "";
+      rows.push(row);
+      row = [];
+      i += 1;
+      continue;
+    }
+    if (c === "\r") {
+      i += 1;
+      continue;
+    }
+    field += c;
+    i += 1;
+  }
+  row.push(field);
+  rows.push(row);
+  return rows.filter((r) => r.some((x) => String(x).length));
+}
+
+function entriesFromCsv(text) {
+  const rows = parseCsv(text);
+  if (!rows.length) return [];
+  const header = rows[0].map((h) => String(h).trim());
+  /** @type {Entry[]} */
+  const out = [];
+  for (const r of rows.slice(1)) {
+    /** @type {any} */
+    const obj = {};
+    for (let i = 0; i < header.length; i++) obj[header[i]] = r[i] ?? "";
+    const scent = String(obj.scent ?? "").trim();
+    const color = normalizeHex(obj.color) ?? "#7A6CFF";
+    if (!scent) continue;
+    out.push({
+      id: String(obj.id ?? uid()),
+      scent,
+      color,
+      description: String(obj.description ?? ""),
+      createdAt: String(obj.createdAt ?? new Date().toISOString()),
+      updatedAt: obj.updatedAt ? String(obj.updatedAt) : undefined,
+    });
+  }
+  return out;
+}
+
+async function seedFromLocalCsvIfEmpty() {
+  if (entries.length) return;
+  try {
+    const res = await fetch("./localData.csv", { cache: "no-store" });
+    if (!res.ok) return;
+    const text = await res.text();
+    const seeded = entriesFromCsv(text);
+    if (!seeded.length) return;
+    entries = seeded.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    persist();
+  } catch {
+    // ignore
+  }
 }
 
 function formatDate(iso) {
@@ -286,13 +398,22 @@ function render() {
   const q = (searchInput.value ?? "").trim().toLowerCase();
   const mode = sortSelect.value;
 
-  const filtered = entries.filter((e) => matchQuery(e, q)).sort((a, b) => compareEntries(a, b, mode));
+  const filteredAll = entries.filter((e) => matchQuery(e, q)).sort((a, b) => compareEntries(a, b, mode));
+  const totalPages = Math.max(1, Math.ceil(filteredAll.length / PAGE_SIZE));
+  page = Math.min(Math.max(1, page), totalPages);
+  const start = (page - 1) * PAGE_SIZE;
+  const filtered = filteredAll.slice(start, start + PAGE_SIZE);
 
   countOut.textContent = String(entries.length);
   exportNote.textContent = entries.length ? `Last saved: ${formatDate(entries[0]?.updatedAt ?? entries[0]?.createdAt)}` : "";
 
   list.innerHTML = "";
   emptyState.hidden = entries.length !== 0;
+  if (pageOut) pageOut.textContent = String(page);
+  if (pageTotalOut) pageTotalOut.textContent = String(totalPages);
+  if (pager) pager.hidden = filteredAll.length <= PAGE_SIZE;
+  if (prevPageBtn) prevPageBtn.disabled = page <= 1;
+  if (nextPageBtn) nextPageBtn.disabled = page >= totalPages;
 
   for (const entry of filtered) {
     const li = document.createElement("li");
@@ -369,6 +490,119 @@ function render() {
     li.append(left, actions);
     list.append(li);
   }
+
+  renderViz();
+}
+
+function renderViz() {
+  if (!vizGrid) return;
+  vizGrid.innerHTML = "";
+  const q = (searchInput?.value ?? "").trim().toLowerCase();
+  const source = q ? entries.filter((e) => matchQuery(e, q)) : entries;
+
+  if (!source.length) {
+    if (vizEmpty) vizEmpty.hidden = false;
+    if (vizPager) vizPager.hidden = true;
+    return;
+  }
+  if (vizEmpty) vizEmpty.hidden = true;
+
+  /** @type {Map<string, Map<string, number>>} */
+  const byScent = new Map();
+  for (const e of source) {
+    const scent = String(e.scent ?? "").trim();
+    const color = normalizeHex(e.color) ?? "#7A6CFF";
+    if (!scent) continue;
+    if (!byScent.has(scent)) byScent.set(scent, new Map());
+    const m = byScent.get(scent);
+    m.set(color, (m.get(color) ?? 0) + 1);
+  }
+
+  const scentsAll = Array.from(byScent.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const totalPages = Math.max(1, Math.ceil(scentsAll.length / VIZ_PAGE_SIZE));
+  vizPage = Math.min(Math.max(1, vizPage), totalPages);
+  const start = (vizPage - 1) * VIZ_PAGE_SIZE;
+  const scents = scentsAll.slice(start, start + VIZ_PAGE_SIZE);
+
+  if (vizPageOut) vizPageOut.textContent = String(vizPage);
+  if (vizPageTotalOut) vizPageTotalOut.textContent = String(totalPages);
+  if (vizPager) vizPager.hidden = scentsAll.length <= VIZ_PAGE_SIZE;
+  if (vizPrevBtn) vizPrevBtn.disabled = vizPage <= 1;
+  if (vizNextBtn) vizNextBtn.disabled = vizPage >= totalPages;
+
+  for (const scent of scents) {
+    const counts = byScent.get(scent);
+    const pairs = Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const total = Array.from(counts.values()).reduce((acc, n) => acc + n, 0);
+
+    const card = document.createElement("div");
+    card.className = "viz-card";
+
+    const top = document.createElement("div");
+    top.className = "viz-top";
+
+    const title = document.createElement("div");
+    title.className = "viz-scent";
+    title.textContent = scent;
+
+    const ct = document.createElement("div");
+    ct.className = "viz-count";
+    ct.textContent = `${total}×`;
+
+    top.append(title, ct);
+
+    const orb = document.createElement("div");
+    orb.className = "orb";
+    orb.setAttribute("role", "img");
+    orb.setAttribute("aria-label", `Colors for ${scent}`);
+
+    const positions = [
+      "35% 35%",
+      "65% 40%",
+      "45% 68%",
+      "72% 70%",
+      "28% 78%",
+    ];
+
+    const rgba = (hex, a) => {
+      const rgb = hexToRgb(hex);
+      if (!rgb) return `rgba(122,108,255,${a})`;
+      return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+    };
+
+    const layers = pairs.flatMap(([hex], idx) => {
+      const posA = positions[idx] ?? "50% 50%";
+      // a second, slightly offset cloud for that “ink in water” blur
+      const posB =
+        idx % 2 === 0
+          ? `${Math.min(92, 35 + idx * 9)}% ${Math.min(90, 30 + idx * 11)}%`
+          : `${Math.max(8, 70 - idx * 10)}% ${Math.min(92, 55 + idx * 7)}%`;
+
+      return [
+        `radial-gradient(circle at ${posA}, ${rgba(hex, 0.92)} 0%, ${rgba(hex, 0.55)} 18%, ${rgba(hex, 0)} 68%)`,
+        `radial-gradient(circle at ${posB}, ${rgba(hex, 0.55)} 0%, ${rgba(hex, 0.22)} 28%, ${rgba(hex, 0)} 78%)`,
+      ];
+    });
+
+    // base soft wash + layered blurs (reference-style)
+    const bg = [
+      "radial-gradient(circle at 50% 55%, rgba(255,255,255,.05) 0%, rgba(0,0,0,0) 62%)",
+      ...layers,
+    ].join(", ");
+    orb.style.setProperty("--orb-bg", bg);
+
+    const chips = document.createElement("div");
+    chips.className = "viz-chips";
+    for (const [hex, n] of pairs) {
+      const chip = document.createElement("div");
+      chip.className = "viz-chip";
+      chip.textContent = n > 1 ? `${hex} · ${n}×` : hex;
+      chips.appendChild(chip);
+    }
+
+    card.append(top, orb, chips);
+    vizGrid.appendChild(card);
+  }
 }
 
 function toCsv(rows) {
@@ -406,6 +640,7 @@ function downloadText(filename, text, mime) {
 applyColor(colorInput.value);
 
 entries = load();
+await seedFromLocalCsvIfEmpty();
 render();
 
 colorText.addEventListener("input", () => {
@@ -464,8 +699,33 @@ cancelEditBtn.addEventListener("click", () => {
   resetForm();
 });
 
-searchInput.addEventListener("input", () => render());
-sortSelect.addEventListener("change", () => render());
+searchInput.addEventListener("input", () => {
+  page = 1;
+  vizPage = 1;
+  render();
+});
+sortSelect.addEventListener("change", () => {
+  page = 1;
+  render();
+});
+
+prevPageBtn?.addEventListener("click", () => {
+  page = Math.max(1, page - 1);
+  render();
+});
+nextPageBtn?.addEventListener("click", () => {
+  page = page + 1;
+  render();
+});
+
+vizPrevBtn?.addEventListener("click", () => {
+  vizPage = Math.max(1, vizPage - 1);
+  renderViz();
+});
+vizNextBtn?.addEventListener("click", () => {
+  vizPage = vizPage + 1;
+  renderViz();
+});
 
 clearAllBtn.addEventListener("click", () => {
   if (!entries.length) {
@@ -476,6 +736,8 @@ clearAllBtn.addEventListener("click", () => {
   if (!ok) return;
   entries = [];
   persist();
+  page = 1;
+  vizPage = 1;
   resetForm(true);
   setStatus("Cleared all mappings.", "good");
   render();
