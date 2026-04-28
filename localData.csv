@@ -1,4 +1,4 @@
-id,scent,color,description,createdAt,updatedAt
+id,scent,color_hex,description,created_at,updated_at
 a66210db-5da5-4dff-b3ba-099a0a34eecc,Grass,#A8BE53,"the earthy scent of grass, with hints of moisture and fresh mud",2026-04-16T13:43:35.326Z,
 917174a7-2c10-4037-9966-136b092b6cbd,Rain on Concrete,#7A8FA3,"Smells like the sidewalk cooling down after a long, bright day—wet dust, stone, and a tiny metallic spark.",2026-04-18T13:27:08.000Z,
 b1774b09-bc50-4c45-919b-231af667487c,Old Books,#8B6F47,"Dry paper, glue, and a faded attic warmth. It reminds me of borrowing novels from a school library no one renovated.",2026-04-18T16:53:20.000Z,2026-04-19T03:24:03.000Z

@@ -1,4 +1,7 @@
 const STORAGE_KEY = "scentMapping.entries.v1";
+const SUPABASE_URL = "https://wvtvsbcjlqfxxgtgwwtl.supabase.co"; // e.g. https://YOUR_PROJECT.supabase.co
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_4v4SVP9PImK5y4-RSlIurg_Oq7eYkZM"; // Use "Publishable key" from Supabase API settings
+const SUPABASE_TABLE = "scent_entries";
 
 /** @typedef {{id:string, scent:string, color:string, description:string, createdAt:string, updatedAt?:string}} Entry */
 
@@ -37,6 +40,7 @@ const vizPageOut = $("#vizPageOut");
 const vizPageTotalOut = $("#vizPageTotalOut");
 const colorWheel = $("#colorWheel");
 const wheelStage = $("#wheelStage");
+const spectrumCanvas = /** @type {HTMLCanvasElement} */ ($("#spectrumCanvas"));
 const wheelDots = $("#wheelDots");
 const wheelEmpty = $("#wheelEmpty");
 const wheelTooltip = $("#wheelTooltip");
@@ -57,6 +61,8 @@ const VIZ_PAGE_SIZE = 9;
 let wheelView = { scale: 1, x: 0, y: 0 };
 let wheelDragging = false;
 let wheelDragStart = { x: 0, y: 0, baseX: 0, baseY: 0 };
+let supabaseClient = null;
+let remoteEnabled = false;
 
 /** @type {{h:number,s:number,v:number}} */
 let hsv = { h: 260, s: 0.58, v: 1 };
@@ -126,6 +132,81 @@ function rgbToHsv({ r, g, b }) {
   return { h, s, v };
 }
 
+function rgbToHsl({ r, g, b }) {
+  const rr = r / 255;
+  const gg = g / 255;
+  const bb = b / 255;
+  const max = Math.max(rr, gg, bb);
+  const min = Math.min(rr, gg, bb);
+  const d = max - min;
+  const l = (max + min) / 2;
+  let h = 0;
+  let s = 0;
+
+  if (d !== 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    if (max === rr) h = 60 * (((gg - bb) / d) % 6);
+    else if (max === gg) h = 60 * ((bb - rr) / d + 2);
+    else h = 60 * ((rr - gg) / d + 4);
+  }
+  if (h < 0) h += 360;
+  return { h, s: s * 100, l: l * 100 };
+}
+
+function hslToRgb(h, s, l) {
+  const hh = ((h % 360) + 360) % 360;
+  const ss = clamp01(s / 100);
+  const ll = clamp01(l / 100);
+  const c = (1 - Math.abs(2 * ll - 1)) * ss;
+  const x = c * (1 - Math.abs(((hh / 60) % 2) - 1));
+  const m = ll - c / 2;
+  let r1 = 0, g1 = 0, b1 = 0;
+  if (hh < 60) [r1, g1, b1] = [c, x, 0];
+  else if (hh < 120) [r1, g1, b1] = [x, c, 0];
+  else if (hh < 180) [r1, g1, b1] = [0, c, x];
+  else if (hh < 240) [r1, g1, b1] = [0, x, c];
+  else if (hh < 300) [r1, g1, b1] = [x, 0, c];
+  else [r1, g1, b1] = [c, 0, x];
+  return {
+    r: Math.round((r1 + m) * 255),
+    g: Math.round((g1 + m) * 255),
+    b: Math.round((b1 + m) * 255),
+  };
+}
+
+function drawSpectrumCanvas() {
+  if (!spectrumCanvas || !colorWheel) return;
+  const rect = colorWheel.getBoundingClientRect();
+  const w = Math.max(2, Math.round(rect.width));
+  const h = Math.max(2, Math.round(rect.height));
+  if (spectrumCanvas.width !== w || spectrumCanvas.height !== h) {
+    spectrumCanvas.width = w;
+    spectrumCanvas.height = h;
+  }
+  const ctx = spectrumCanvas.getContext("2d");
+  if (!ctx) return;
+
+  const img = ctx.createImageData(w, h);
+  const data = img.data;
+
+  for (let y = 0; y < h; y++) {
+    const t = y / (h - 1);
+    // top pastel -> middle vivid -> bottom dark
+    const sat = t < 0.5 ? 30 + (t / 0.5) * 70 : 100;
+    const light = t < 0.5 ? 92 - (t / 0.5) * 42 : 50 - ((t - 0.5) / 0.5) * 42;
+    for (let x = 0; x < w; x++) {
+      const hue = (x / (w - 1)) * 360;
+      const { r, g, b } = hslToRgb(hue, sat, light);
+      const i = (y * w + x) * 4;
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+      data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 function setStatus(msg, tone = "neutral") {
   formStatus.textContent = msg;
   formStatus.classList.remove("good", "bad");
@@ -156,6 +237,105 @@ function load() {
 
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(entries, null, 2));
+}
+
+function mapDbRowToEntry(row) {
+  return {
+    id: String(row.id ?? uid()),
+    scent: String(row.scent ?? "").trim(),
+    color: normalizeHex(row.color_hex ?? row.color) ?? "#7A6CFF",
+    description: String(row.description ?? ""),
+    createdAt: String(row.created_at ?? row.createdAt ?? new Date().toISOString()),
+    updatedAt: row.updated_at ? String(row.updated_at) : undefined,
+  };
+}
+
+function mapEntryToDbRow(entry) {
+  return {
+    id: entry.id,
+    scent: entry.scent,
+    color_hex: entry.color,
+    description: entry.description,
+    created_at: entry.createdAt,
+  };
+}
+
+function canUseSupabase() {
+  return Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY && window.supabase?.createClient);
+}
+
+function initSupabase() {
+  if (!canUseSupabase()) return null;
+  if (supabaseClient) return supabaseClient;
+  supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+  return supabaseClient;
+}
+
+async function fetchRemoteEntries() {
+  const client = initSupabase();
+  if (!client) return null;
+  const { data, error } = await client
+    .from(SUPABASE_TABLE)
+    .select("id,scent,color_hex,description,created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(mapDbRowToEntry);
+}
+
+async function upsertRemoteEntry(entry) {
+  const client = initSupabase();
+  if (!client) return;
+  const payload = mapEntryToDbRow(entry);
+  const { error } = await client.from(SUPABASE_TABLE).upsert(payload, { onConflict: "id" });
+  if (error) throw error;
+}
+
+async function insertRemoteEntry(entry) {
+  const client = initSupabase();
+  if (!client) return;
+  const payload = mapEntryToDbRow(entry);
+  const { error } = await client.from(SUPABASE_TABLE).insert(payload);
+  if (error) throw error;
+}
+
+async function updateRemoteEntry(entry) {
+  const client = initSupabase();
+  if (!client) return;
+  const payload = mapEntryToDbRow(entry);
+  const { error } = await client
+    .from(SUPABASE_TABLE)
+    .update({
+      scent: payload.scent,
+      color_hex: payload.color_hex,
+      description: payload.description,
+    })
+    .eq("id", payload.id);
+  if (error) throw error;
+}
+
+async function deleteRemoteEntry(id) {
+  const client = initSupabase();
+  if (!client) return;
+  const { error } = await client.from(SUPABASE_TABLE).delete().eq("id", id);
+  if (error) throw error;
+}
+
+async function loadInitialEntries() {
+  // local cache first for fast paint, then remote sync if configured
+  entries = load();
+  if (!entries.length) await seedFromLocalCsvIfEmpty();
+
+  try {
+    const remote = await fetchRemoteEntries();
+    if (remote) {
+      remoteEnabled = true;
+      entries = remote;
+      persist();
+      return;
+    }
+  } catch {
+    remoteEnabled = false;
+  }
 }
 
 function parseCsv(text) {
@@ -483,11 +663,22 @@ function render() {
     delBtn.type = "button";
     delBtn.className = "btn danger";
     delBtn.textContent = "Delete";
-    delBtn.addEventListener("click", () => {
+    delBtn.addEventListener("click", async () => {
       const ok = confirm(`Delete mapping for “${entry.scent}”?`);
       if (!ok) return;
+      const previous = entries;
       entries = entries.filter((e) => e.id !== entry.id);
       persist();
+      try {
+        await deleteRemoteEntry(entry.id);
+      } catch {
+        // restore local state if remote delete failed to avoid divergence
+        entries = previous;
+        persist();
+        setStatus("Delete failed on remote. Kept local data unchanged.", "bad");
+        render();
+        return;
+      }
       if (editingId === entry.id) resetForm(true);
       setStatus("Deleted mapping.", "good");
       render();
@@ -652,11 +843,14 @@ function renderColorWheel() {
   for (const [hex, meta] of colors) {
     const rgb = hexToRgb(hex);
     if (!rgb) continue;
-    const hsvDot = rgbToHsv(rgb);
+    const hslDot = rgbToHsl(rgb);
     // Plot in rectangular spectrum space:
-    // x = hue, y = blend of value + saturation for easier dot separation.
-    const cx = clamp01(hsvDot.h / 360) * 100;
-    const cy = clamp01((1 - hsvDot.v) * 0.72 + (1 - hsvDot.s) * 0.28) * 100;
+    // x = hue, y follows the same lightness curve used by drawSpectrumCanvas().
+    const cx = clamp01(hslDot.h / 360) * 100;
+    const tFromL = clamp01((92 - hslDot.l) / 84);
+    const tFromS = clamp01((hslDot.s - 30) / 140);
+    const t = tFromL < 0.55 ? clamp01(tFromL * 0.78 + tFromS * 0.22) : tFromL;
+    const cy = t * 100;
 
     const dot = document.createElement("button");
     dot.type = "button";
@@ -668,8 +862,6 @@ function renderColorWheel() {
 
     const scentList = Array.from(meta.scents).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     const scentText = scentList.join(", ");
-    dot.title = `${hex}\n${scentText}`;
-
     const showTip = () => {
       const dotRect = dot.getBoundingClientRect();
       const tx = dotRect.left + dotRect.width / 2;
@@ -747,8 +939,7 @@ function downloadText(filename, text, mime) {
 // --- events ---
 applyColor(colorInput.value);
 
-entries = load();
-await seedFromLocalCsvIfEmpty();
+await loadInitialEntries();
 render();
 
 colorText.addEventListener("input", () => {
@@ -798,7 +989,10 @@ hueCanvas.addEventListener("pointercancel", () => {
 });
 
 window.addEventListener("resize", () => positionCursors());
-window.addEventListener("resize", () => applyWheelTransform());
+window.addEventListener("resize", () => {
+  applyWheelTransform();
+  drawSpectrumCanvas();
+});
 
 descInput.addEventListener("input", () => {
   descCount.textContent = String(descInput.value.length);
@@ -886,8 +1080,23 @@ clearAllBtn.addEventListener("click", () => {
     setStatus("Nothing to clear.", "neutral");
     return;
   }
-  const ok = confirm("Clear ALL saved scent mappings? This cannot be undone.");
+  const ok = confirm(
+    remoteEnabled
+      ? "Clear local cache and reload shared database entries?"
+      : "Clear ALL saved scent mappings? This cannot be undone."
+  );
   if (!ok) return;
+  if (remoteEnabled) {
+    localStorage.removeItem(STORAGE_KEY);
+    setStatus("Local cache cleared. Reloading shared entries…", "good");
+    loadInitialEntries().then(() => {
+      page = 1;
+      vizPage = 1;
+      resetForm(true);
+      render();
+    });
+    return;
+  }
   entries = [];
   persist();
   page = 1;
@@ -898,8 +1107,9 @@ clearAllBtn.addEventListener("click", () => {
 });
 
 applyWheelTransform();
+drawSpectrumCanvas();
 
-form.addEventListener("submit", (e) => {
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
   const scent = String(scentInput.value ?? "").trim();
   const color = normalizeHex(colorInput.value) ?? normalizeHex(colorText.value) ?? "#7A6CFF";
@@ -926,7 +1136,18 @@ form.addEventListener("submit", (e) => {
         updatedAt: now,
       };
       persist();
-      setStatus("Updated mapping.", "good");
+      try {
+        await updateRemoteEntry(entries[idx]);
+        if (remoteEnabled) setStatus("Updated mapping (synced).", "good");
+        else setStatus("Updated mapping.", "good");
+      } catch (err) {
+        const msg = String(err?.message ?? "");
+        if (msg.includes("401") || msg.toLowerCase().includes("unauthorized")) {
+          setStatus("Updated locally. Supabase rejected update (check RLS policies / publishable key).", "bad");
+        } else {
+          setStatus("Updated locally. Remote sync failed.", "bad");
+        }
+      }
       setEditing(null);
       resetForm(true);
       render();
@@ -944,7 +1165,18 @@ form.addEventListener("submit", (e) => {
   };
   entries.unshift(entry);
   persist();
-  setStatus("Saved mapping.", "good");
+  try {
+    await insertRemoteEntry(entry);
+    if (remoteEnabled) setStatus("Saved mapping (synced).", "good");
+    else setStatus("Saved mapping.", "good");
+  } catch (err) {
+    const msg = String(err?.message ?? "");
+    if (msg.includes("401") || msg.toLowerCase().includes("unauthorized")) {
+      setStatus("Saved locally. Supabase rejected insert (check RLS insert policy / publishable key).", "bad");
+    } else {
+      setStatus("Saved locally. Remote sync failed.", "bad");
+    }
+  }
   resetForm(true);
   render();
 });
