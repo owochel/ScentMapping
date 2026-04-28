@@ -195,6 +195,26 @@
 
       <section class="card">
         <div class="card-head">
+          <div class="card-title">Color Spectrum Map</div>
+          <div class="card-note">Hover a dot to see which scents use that color.</div>
+        </div>
+        <div class="wheel-wrap">
+          <div id="wheelEmpty" class="empty" hidden>
+            <div class="empty-title">No colors to map yet.</div>
+            <div class="empty-sub">Save some scent mappings to populate the wheel.</div>
+          </div>
+          <div id="colorWheel" class="color-wheel" aria-label="Assigned colors plotted on spectrum">
+            <div id="wheelStage" class="wheel-stage">
+              <div class="wheel-ring" aria-hidden="true"></div>
+              <div id="wheelDots" class="wheel-dots"></div>
+            </div>
+            <div id="wheelTooltip" class="wheel-tooltip" hidden></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
           <div class="card-title">Export</div>
           <div class="card-note">Download your data as JSON or CSV.</div>
         </div>

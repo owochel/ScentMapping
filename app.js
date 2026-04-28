@@ -35,6 +35,11 @@ const vizPrevBtn = /** @type {HTMLButtonElement} */ ($("#vizPrevBtn"));
 const vizNextBtn = /** @type {HTMLButtonElement} */ ($("#vizNextBtn"));
 const vizPageOut = $("#vizPageOut");
 const vizPageTotalOut = $("#vizPageTotalOut");
+const colorWheel = $("#colorWheel");
+const wheelStage = $("#wheelStage");
+const wheelDots = $("#wheelDots");
+const wheelEmpty = $("#wheelEmpty");
+const wheelTooltip = $("#wheelTooltip");
 const pager = $("#pager");
 const prevPageBtn = /** @type {HTMLButtonElement} */ ($("#prevPageBtn"));
 const nextPageBtn = /** @type {HTMLButtonElement} */ ($("#nextPageBtn"));
@@ -49,6 +54,9 @@ let page = 1;
 const PAGE_SIZE = 5;
 let vizPage = 1;
 const VIZ_PAGE_SIZE = 9;
+let wheelView = { scale: 1, x: 0, y: 0 };
+let wheelDragging = false;
+let wheelDragStart = { x: 0, y: 0, baseX: 0, baseY: 0 };
 
 /** @type {{h:number,s:number,v:number}} */
 let hsv = { h: 260, s: 0.58, v: 1 };
@@ -492,6 +500,7 @@ function render() {
   }
 
   renderViz();
+  renderColorWheel();
 }
 
 function renderViz() {
@@ -605,6 +614,107 @@ function renderViz() {
   }
 }
 
+function renderColorWheel() {
+  if (!colorWheel || !wheelDots) return;
+  wheelDots.innerHTML = "";
+
+  const q = (searchInput?.value ?? "").trim().toLowerCase();
+  const source = q ? entries.filter((e) => matchQuery(e, q)) : entries;
+  if (!source.length) {
+    if (wheelEmpty) wheelEmpty.hidden = false;
+    colorWheel.hidden = true;
+    if (wheelTooltip) wheelTooltip.hidden = true;
+    return;
+  }
+
+  /** @type {Map<string, {count:number, scents:Set<string>} >} */
+  const byColor = new Map();
+  for (const e of source) {
+    const hex = normalizeHex(e.color);
+    if (!hex) continue;
+    if (!byColor.has(hex)) byColor.set(hex, { count: 0, scents: new Set() });
+    const item = byColor.get(hex);
+    item.count += 1;
+    item.scents.add(String(e.scent ?? "").trim());
+  }
+
+  const colors = Array.from(byColor.entries()).sort((a, b) => b[1].count - a[1].count);
+  if (!colors.length) {
+    if (wheelEmpty) wheelEmpty.hidden = false;
+    colorWheel.hidden = true;
+    if (wheelTooltip) wheelTooltip.hidden = true;
+    return;
+  }
+
+  colorWheel.hidden = false;
+  if (wheelEmpty) wheelEmpty.hidden = true;
+
+  for (const [hex, meta] of colors) {
+    const rgb = hexToRgb(hex);
+    if (!rgb) continue;
+    const hsvDot = rgbToHsv(rgb);
+    // Plot in rectangular spectrum space:
+    // x = hue, y = blend of value + saturation for easier dot separation.
+    const cx = clamp01(hsvDot.h / 360) * 100;
+    const cy = clamp01((1 - hsvDot.v) * 0.72 + (1 - hsvDot.s) * 0.28) * 100;
+
+    const dot = document.createElement("button");
+    dot.type = "button";
+    dot.className = "wheel-dot";
+    dot.style.left = `${cx}%`;
+    dot.style.top = `${cy}%`;
+    dot.style.background = hex;
+    dot.setAttribute("aria-label", `${hex}, ${meta.scents.size} scent${meta.scents.size === 1 ? "" : "s"}`);
+
+    const scentList = Array.from(meta.scents).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+    const scentText = scentList.join(", ");
+    dot.title = `${hex}\n${scentText}`;
+
+    const showTip = () => {
+      if (!wheelTooltip || !colorWheel) return;
+      const wheelRect = colorWheel.getBoundingClientRect();
+      const dotRect = dot.getBoundingClientRect();
+      const tx = dotRect.left - wheelRect.left + dotRect.width / 2;
+      const ty = dotRect.top - wheelRect.top;
+      wheelTooltip.hidden = false;
+      wheelTooltip.style.left = `${tx}px`;
+      wheelTooltip.style.top = `${ty}px`;
+      wheelTooltip.innerHTML = `<div class="mono">${hex} · ${meta.count} mention${meta.count === 1 ? "" : "s"}</div><div>${scentText || "No scents"}</div>`;
+    };
+    const hideTip = () => {
+      if (!wheelTooltip) return;
+      wheelTooltip.hidden = true;
+    };
+
+    dot.addEventListener("mouseenter", showTip);
+    dot.addEventListener("focus", showTip);
+    dot.addEventListener("mouseleave", hideTip);
+    dot.addEventListener("blur", hideTip);
+
+    wheelDots.appendChild(dot);
+  }
+}
+
+function clampWheelView() {
+  if (!colorWheel) return;
+  if (wheelView.scale <= 1) {
+    wheelView.x = 0;
+    wheelView.y = 0;
+    return;
+  }
+  const rect = colorWheel.getBoundingClientRect();
+  const minX = rect.width - rect.width * wheelView.scale;
+  const minY = rect.height - rect.height * wheelView.scale;
+  wheelView.x = Math.min(0, Math.max(minX, wheelView.x));
+  wheelView.y = Math.min(0, Math.max(minY, wheelView.y));
+}
+
+function applyWheelTransform() {
+  if (!wheelStage) return;
+  clampWheelView();
+  wheelStage.style.transform = `translate(${wheelView.x}px, ${wheelView.y}px) scale(${wheelView.scale})`;
+}
+
 function toCsv(rows) {
   const headers = ["id", "scent", "color", "description", "createdAt", "updatedAt"];
   const esc = (v) => {
@@ -690,6 +800,7 @@ hueCanvas.addEventListener("pointercancel", () => {
 });
 
 window.addEventListener("resize", () => positionCursors());
+window.addEventListener("resize", () => applyWheelTransform());
 
 descInput.addEventListener("input", () => {
   descCount.textContent = String(descInput.value.length);
@@ -727,6 +838,51 @@ vizNextBtn?.addEventListener("click", () => {
   renderViz();
 });
 
+colorWheel?.addEventListener("wheel", (e) => {
+  if (!colorWheel) return;
+  e.preventDefault();
+  const rect = colorWheel.getBoundingClientRect();
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+  const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+  const nextScale = Math.min(6, Math.max(1, wheelView.scale * factor));
+  if (nextScale === wheelView.scale) return;
+
+  const wx = (cx - wheelView.x) / wheelView.scale;
+  const wy = (cy - wheelView.y) / wheelView.scale;
+  wheelView.scale = nextScale;
+  wheelView.x = cx - wx * wheelView.scale;
+  wheelView.y = cy - wy * wheelView.scale;
+  applyWheelTransform();
+  if (wheelTooltip) wheelTooltip.hidden = true;
+}, { passive: false });
+
+colorWheel?.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  wheelDragging = true;
+  wheelDragStart = { x: e.clientX, y: e.clientY, baseX: wheelView.x, baseY: wheelView.y };
+  colorWheel.classList.add("is-dragging");
+  if (wheelTooltip) wheelTooltip.hidden = true;
+});
+
+window.addEventListener("mousemove", (e) => {
+  if (!wheelDragging) return;
+  wheelView.x = wheelDragStart.baseX + (e.clientX - wheelDragStart.x);
+  wheelView.y = wheelDragStart.baseY + (e.clientY - wheelDragStart.y);
+  applyWheelTransform();
+});
+
+window.addEventListener("mouseup", () => {
+  wheelDragging = false;
+  colorWheel?.classList.remove("is-dragging");
+});
+
+colorWheel?.addEventListener("dblclick", () => {
+  wheelView = { scale: 1, x: 0, y: 0 };
+  applyWheelTransform();
+  if (wheelTooltip) wheelTooltip.hidden = true;
+});
+
 clearAllBtn.addEventListener("click", () => {
   if (!entries.length) {
     setStatus("Nothing to clear.", "neutral");
@@ -742,6 +898,8 @@ clearAllBtn.addEventListener("click", () => {
   setStatus("Cleared all mappings.", "good");
   render();
 });
+
+applyWheelTransform();
 
 form.addEventListener("submit", (e) => {
   e.preventDefault();
