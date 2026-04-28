@@ -510,6 +510,17 @@ input[type="color"]::-webkit-color-swatch{border:none}
   margin: 0 auto;
   border-radius:16px;
   border:1px solid rgba(255,255,255,.08);
+  background: rgba(0,0,0,.18);
+  box-shadow: 0 24px 80px rgba(0,0,0,.58), inset 0 0 0 1px rgba(255,255,255,.08);
+  overflow:hidden;
+  cursor:grab;
+}
+.color-wheel.is-dragging{cursor:grabbing}
+.wheel-stage{
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  overflow:visible;
   background:
     linear-gradient(to right,
       #ff3b30,
@@ -524,14 +535,6 @@ input[type="color"]::-webkit-color-swatch{border:none}
       #ff3b30),
     linear-gradient(to top, rgba(0,0,0,.92) 0%, rgba(0,0,0,0) 58%),
     linear-gradient(to right, rgba(255,255,255,.35) 0%, rgba(255,255,255,0) 35%);
-  box-shadow: 0 24px 80px rgba(0,0,0,.58), inset 0 0 0 1px rgba(255,255,255,.08);
-  overflow:hidden;
-  cursor:grab;
-}
-.color-wheel.is-dragging{cursor:grabbing}
-.wheel-stage{
-  position:absolute;
-  inset:0;
   transform-origin: 0 0;
   will-change: transform;
 }
@@ -568,7 +571,7 @@ input[type="color"]::-webkit-color-swatch{border:none}
   z-index:2;
 }
 .wheel-tooltip{
-  position:absolute;
+  position:fixed;
   left:0;
   top:0;
   transform: translate(-50%, -115%);

@@ -671,11 +671,9 @@ function renderColorWheel() {
     dot.title = `${hex}\n${scentText}`;
 
     const showTip = () => {
-      if (!wheelTooltip || !colorWheel) return;
-      const wheelRect = colorWheel.getBoundingClientRect();
       const dotRect = dot.getBoundingClientRect();
-      const tx = dotRect.left - wheelRect.left + dotRect.width / 2;
-      const ty = dotRect.top - wheelRect.top;
+      const tx = dotRect.left + dotRect.width / 2;
+      const ty = dotRect.top;
       wheelTooltip.hidden = false;
       wheelTooltip.style.left = `${tx}px`;
       wheelTooltip.style.top = `${ty}px`;
