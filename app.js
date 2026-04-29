@@ -24,8 +24,6 @@ const emptyState = $("#emptyState");
 const countOut = $("#countOut");
 const formStatus = $("#formStatus");
 const saveBtn = $("#saveBtn");
-const cancelEditBtn = /** @type {HTMLButtonElement} */ ($("#cancelEditBtn"));
-const clearAllBtn = /** @type {HTMLButtonElement} */ ($("#clearAllBtn"));
 const downloadJsonBtn = /** @type {HTMLButtonElement} */ ($("#downloadJsonBtn"));
 const downloadCsvBtn = /** @type {HTMLButtonElement} */ ($("#downloadCsvBtn"));
 const exportNote = $("#exportNote");
@@ -52,8 +50,6 @@ const pageTotalOut = $("#pageTotalOut");
 
 /** @type {Entry[]} */
 let entries = [];
-/** @type {string|null} */
-let editingId = null;
 let page = 1;
 const PAGE_SIZE = 5;
 let vizPage = 1;
@@ -546,33 +542,85 @@ function getPointerPos(e, el) {
   return { x: x - r.left, y: y - r.top, w: r.width, h: r.height };
 }
 
-function setEditing(entry) {
-  editingId = entry?.id ?? null;
-  if (editingId) {
-    saveBtn.textContent = "Update mapping";
-    cancelEditBtn.hidden = false;
-    setStatus("Editing existing mapping.", "neutral");
-  } else {
-    saveBtn.textContent = "Save mapping";
-    cancelEditBtn.hidden = true;
-    setStatus("");
-  }
-}
-
 function resetForm(keepStatus = false) {
   form.reset();
   scentInput.value = "";
   descInput.value = "";
   descCount.textContent = "0";
   applyColor("#7A6CFF");
-  setEditing(null);
+  saveBtn.textContent = "Save mapping";
   if (!keepStatus) setStatus("");
 }
 
-function matchQuery(entry, q) {
-  if (!q) return true;
-  const hay = `${entry.scent}\n${entry.description}`.toLowerCase();
-  return hay.includes(q);
+function normalizeText(s) {
+  return String(s ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function tokenizeWords(s) {
+  const t = normalizeText(s);
+  if (!t) return [];
+  return t.split(" ").filter((x) => x.length > 1);
+}
+
+function charTrigrams(s) {
+  const t = normalizeText(s).replace(/\s/g, "");
+  const out = [];
+  if (t.length < 3) return out;
+  for (let i = 0; i <= t.length - 3; i += 1) out.push(t.slice(i, i + 3));
+  return out;
+}
+
+function buildTermVector(text) {
+  /** @type {Map<string, number>} */
+  const v = new Map();
+  const words = tokenizeWords(text);
+  for (const w of words) v.set(`w:${w}`, (v.get(`w:${w}`) ?? 0) + 1);
+  for (const g of charTrigrams(text)) v.set(`g:${g}`, (v.get(`g:${g}`) ?? 0) + 0.35);
+  return v;
+}
+
+function cosineSimilarity(a, b) {
+  let dot = 0;
+  let na = 0;
+  let nb = 0;
+  for (const [, va] of a) na += va * va;
+  for (const [, vb] of b) nb += vb * vb;
+  if (!na || !nb) return 0;
+  for (const [k, va] of a) {
+    const vb = b.get(k);
+    if (vb) dot += va * vb;
+  }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+function searchScore(entry, q) {
+  if (!q) return 1;
+  const query = normalizeText(q);
+  const scent = normalizeText(entry.scent);
+  const desc = normalizeText(entry.description);
+  const combined = `${scent} ${desc}`.trim();
+  if (!combined) return 0;
+
+  const vecQ = buildTermVector(query);
+  const vecDoc = buildTermVector(combined);
+  let score = cosineSimilarity(vecQ, vecDoc);
+
+  // small boosts for direct phrase matches
+  if (scent.includes(query)) score += 0.25;
+  else if (combined.includes(query)) score += 0.12;
+  return score;
+}
+
+function getSearchResults(q) {
+  if (!q) return entries.map((entry) => ({ entry, score: 1 }));
+  return entries
+    .map((entry) => ({ entry, score: searchScore(entry, q) }))
+    .filter((x) => x.score >= 0.12)
+    .sort((a, b) => b.score - a.score || b.entry.createdAt.localeCompare(a.entry.createdAt));
 }
 
 function compareEntries(a, b, mode) {
@@ -586,7 +634,10 @@ function render() {
   const q = (searchInput.value ?? "").trim().toLowerCase();
   const mode = sortSelect.value;
 
-  const filteredAll = entries.filter((e) => matchQuery(e, q)).sort((a, b) => compareEntries(a, b, mode));
+  const searchResults = getSearchResults(q);
+  const filteredAll = q
+    ? searchResults.map((x) => x.entry)
+    : searchResults.map((x) => x.entry).sort((a, b) => compareEntries(a, b, mode));
   const totalPages = Math.max(1, Math.ceil(filteredAll.length / PAGE_SIZE));
   page = Math.min(Math.max(1, page), totalPages);
   const start = (page - 1) * PAGE_SIZE;
@@ -642,51 +693,7 @@ function render() {
     main.append(title, desc, meta);
     left.append(dot, main);
 
-    const actions = document.createElement("div");
-    actions.className = "row-actions";
-
-    const editBtn = document.createElement("button");
-    editBtn.type = "button";
-    editBtn.className = "btn";
-    editBtn.textContent = "Edit";
-    editBtn.addEventListener("click", () => {
-      scentInput.value = entry.scent;
-      descInput.value = entry.description;
-      descCount.textContent = String(entry.description.length);
-      applyColor(entry.color);
-      setEditing(entry);
-      scentInput.focus();
-      scentInput.setSelectionRange(0, scentInput.value.length);
-    });
-
-    const delBtn = document.createElement("button");
-    delBtn.type = "button";
-    delBtn.className = "btn danger";
-    delBtn.textContent = "Delete";
-    delBtn.addEventListener("click", async () => {
-      const ok = confirm(`Delete mapping for “${entry.scent}”?`);
-      if (!ok) return;
-      const previous = entries;
-      entries = entries.filter((e) => e.id !== entry.id);
-      persist();
-      try {
-        await deleteRemoteEntry(entry.id);
-      } catch {
-        // restore local state if remote delete failed to avoid divergence
-        entries = previous;
-        persist();
-        setStatus("Delete failed on remote. Kept local data unchanged.", "bad");
-        render();
-        return;
-      }
-      if (editingId === entry.id) resetForm(true);
-      setStatus("Deleted mapping.", "good");
-      render();
-    });
-
-    actions.append(editBtn, delBtn);
-
-    li.append(left, actions);
+    li.append(left);
     list.append(li);
   }
 
@@ -698,7 +705,7 @@ function renderViz() {
   if (!vizGrid) return;
   vizGrid.innerHTML = "";
   const q = (searchInput?.value ?? "").trim().toLowerCase();
-  const source = q ? entries.filter((e) => matchQuery(e, q)) : entries;
+  const source = getSearchResults(q).map((x) => x.entry);
 
   if (!source.length) {
     if (vizEmpty) vizEmpty.hidden = false;
@@ -709,6 +716,8 @@ function renderViz() {
 
   /** @type {Map<string, Map<string, number>>} */
   const byScent = new Map();
+  /** @type {Map<string, string>} */
+  const scentLatestAt = new Map();
   for (const e of source) {
     const scent = String(e.scent ?? "").trim();
     const color = normalizeHex(e.color) ?? "#7A6CFF";
@@ -716,9 +725,15 @@ function renderViz() {
     if (!byScent.has(scent)) byScent.set(scent, new Map());
     const m = byScent.get(scent);
     m.set(color, (m.get(color) ?? 0) + 1);
+    const prev = scentLatestAt.get(scent);
+    if (!prev || e.createdAt > prev) scentLatestAt.set(scent, e.createdAt);
   }
 
-  const scentsAll = Array.from(byScent.keys()).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  const scentsAll = Array.from(byScent.keys()).sort((a, b) => {
+    const da = scentLatestAt.get(a) ?? "";
+    const db = scentLatestAt.get(b) ?? "";
+    return db.localeCompare(da);
+  });
   const totalPages = Math.max(1, Math.ceil(scentsAll.length / VIZ_PAGE_SIZE));
   vizPage = Math.min(Math.max(1, vizPage), totalPages);
   const start = (vizPage - 1) * VIZ_PAGE_SIZE;
@@ -810,7 +825,7 @@ function renderColorWheel() {
   wheelDots.innerHTML = "";
 
   const q = (searchInput?.value ?? "").trim().toLowerCase();
-  const source = q ? entries.filter((e) => matchQuery(e, q)) : entries;
+  const source = getSearchResults(q).map((x) => x.entry);
   if (!source.length) {
     if (wheelEmpty) wheelEmpty.hidden = false;
     colorWheel.hidden = true;
@@ -936,6 +951,21 @@ function downloadText(filename, text, mime) {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
+async function getExportEntries() {
+  try {
+    const remote = await fetchRemoteEntries();
+    if (remote && remote.length) {
+      return { rows: remote, source: "supabase" };
+    }
+    if (remote && !remote.length) {
+      return { rows: [], source: "supabase" };
+    }
+  } catch {
+    // fall back to local cache
+  }
+  return { rows: entries, source: "local" };
+}
+
 // --- events ---
 applyColor(colorInput.value);
 
@@ -996,10 +1026,6 @@ window.addEventListener("resize", () => {
 
 descInput.addEventListener("input", () => {
   descCount.textContent = String(descInput.value.length);
-});
-
-cancelEditBtn.addEventListener("click", () => {
-  resetForm();
 });
 
 searchInput.addEventListener("input", () => {
@@ -1075,37 +1101,6 @@ colorWheel?.addEventListener("dblclick", () => {
   if (wheelTooltip) wheelTooltip.hidden = true;
 });
 
-clearAllBtn.addEventListener("click", () => {
-  if (!entries.length) {
-    setStatus("Nothing to clear.", "neutral");
-    return;
-  }
-  const ok = confirm(
-    remoteEnabled
-      ? "Clear local cache and reload shared database entries?"
-      : "Clear ALL saved scent mappings? This cannot be undone."
-  );
-  if (!ok) return;
-  if (remoteEnabled) {
-    localStorage.removeItem(STORAGE_KEY);
-    setStatus("Local cache cleared. Reloading shared entries…", "good");
-    loadInitialEntries().then(() => {
-      page = 1;
-      vizPage = 1;
-      resetForm(true);
-      render();
-    });
-    return;
-  }
-  entries = [];
-  persist();
-  page = 1;
-  vizPage = 1;
-  resetForm(true);
-  setStatus("Cleared all mappings.", "good");
-  render();
-});
-
 applyWheelTransform();
 drawSpectrumCanvas();
 
@@ -1122,39 +1117,6 @@ form.addEventListener("submit", async (e) => {
   }
 
   const now = new Date().toISOString();
-  if (editingId) {
-    const idx = entries.findIndex((x) => x.id === editingId);
-    if (idx === -1) {
-      setStatus("That mapping no longer exists. Saving as new.", "neutral");
-      editingId = null;
-    } else {
-      entries[idx] = {
-        ...entries[idx],
-        scent,
-        color,
-        description,
-        updatedAt: now,
-      };
-      persist();
-      try {
-        await updateRemoteEntry(entries[idx]);
-        if (remoteEnabled) setStatus("Updated mapping (synced).", "good");
-        else setStatus("Updated mapping.", "good");
-      } catch (err) {
-        const msg = String(err?.message ?? "");
-        if (msg.includes("401") || msg.toLowerCase().includes("unauthorized")) {
-          setStatus("Updated locally. Supabase rejected update (check RLS policies / publishable key).", "bad");
-        } else {
-          setStatus("Updated locally. Remote sync failed.", "bad");
-        }
-      }
-      setEditing(null);
-      resetForm(true);
-      render();
-      return;
-    }
-  }
-
   /** @type {Entry} */
   const entry = {
     id: uid(),
@@ -1181,23 +1143,25 @@ form.addEventListener("submit", async (e) => {
   render();
 });
 
-downloadJsonBtn.addEventListener("click", () => {
-  if (!entries.length) {
+downloadJsonBtn.addEventListener("click", async () => {
+  const { rows, source } = await getExportEntries();
+  if (!rows.length) {
     setStatus("No data to download yet.", "bad");
     return;
   }
   const stamp = new Date().toISOString().slice(0, 10);
-  downloadText(`scent-mapping_${stamp}.json`, JSON.stringify(entries, null, 2), "application/json");
-  setStatus("Downloaded JSON.", "good");
+  downloadText(`scent-mapping_${stamp}.json`, JSON.stringify(rows, null, 2), "application/json");
+  setStatus(source === "supabase" ? "Downloaded JSON from Supabase." : "Downloaded JSON from local cache.", "good");
 });
 
-downloadCsvBtn.addEventListener("click", () => {
-  if (!entries.length) {
+downloadCsvBtn.addEventListener("click", async () => {
+  const { rows, source } = await getExportEntries();
+  if (!rows.length) {
     setStatus("No data to download yet.", "bad");
     return;
   }
   const stamp = new Date().toISOString().slice(0, 10);
-  downloadText(`scent-mapping_${stamp}.csv`, toCsv(entries), "text/csv;charset=utf-8");
-  setStatus("Downloaded CSV.", "good");
+  downloadText(`scent-mapping_${stamp}.csv`, toCsv(rows), "text/csv;charset=utf-8");
+  setStatus(source === "supabase" ? "Downloaded CSV from Supabase." : "Downloaded CSV from local cache.", "good");
 });
 
